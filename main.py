@@ -1,4 +1,4 @@
-# made entirely by gpt ;)
+# made entirely with gpt4 ;)
 
 import os
 import time
@@ -92,6 +92,10 @@ class PRMonitor:
                     self.sp[cid]['s_prs'].add(pr.id)
 
 def monitor_prs(u: Update, c: CallbackContext) -> None:
+    if u.effective_chat.id != -1001798829382:
+        u.message.reply_text("Sorry, this bot is limited to a specific group.")
+        return
+
     interval = 60
     cid = u.effective_chat.id
     pr_mon = PRMonitor()
