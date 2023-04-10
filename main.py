@@ -76,7 +76,7 @@ class PRMonitor:
                             messages=[
                                 {
                                     "role": "system",
-                                    "content": "You are an AI assistant specialized in summarizing GitHub pull requests. Your task is to provide concise and informative summaries that help users understand the most important and relevant changes made in the code. Avoid mentioning less important details, make it short and only up to 500 characters"
+                                    "content": "You are an AI assistant specialized in summarizing GitHub pull requests. Your task is to provide concise and informative summaries that help users understand the most important and relevant changes made in the code. Avoid mentioning less important details, make it short and only up to 500 characters, avoid metacomments like 'this PR...' just be direct."
                                 },
                                 {
                                     "role": "user",
@@ -93,7 +93,7 @@ class PRMonitor:
                             messages=[
                                 {
                                     "role": "system",
-                                    "content": "You are an AI assistant that can generate a brief and coherent summary based on multiple summaries. Your task is to provide a single, easily understandable summary that highlights the most important information from the given summaries, make it short and only up to 500 characters"
+                                    "content": "You are an AI assistant that can generate a brief and coherent summary based on multiple summaries mades from parts of the same corpus of text. Your task is to provide a single, easily understandable summary that highlights the most important information from the given summaries, make it short and only up to 500 characters"
                                 },
                                 {
                                     "role": "user",
@@ -107,7 +107,7 @@ class PRMonitor:
                     print(f"Sending summary: {f_summary}")
 
                     try:
-                        c.bot.send_message(cid, f"*PR Summary:* {f_summary}\n\n*PR Link:* {pr.html_url}", parse_mode='Markdown')
+                        c.bot.send_message(cid, f"*{o_name}*\n\n{f_summary}\n\n🔗 {pr.html_url}", parse_mode='Markdown', disable_web_page_preview=True)
                     except Exception as e:
                         print(f"Error sending message: {e}")
                     self.sp[cid]['s_prs'].add(pr.id)
@@ -148,7 +148,7 @@ def main():
     updater.start_polling()
 
     chat_id = -1001798829382
-    interval = 61 * 60  # run every 61 minutes
+    interval = run_every  # run every 61 minutes
     pr_mon = PRMonitor()
     updater.job_queue.run_repeating(pr_mon.m_prs, interval, context=chat_id)
 
