@@ -1,120 +1,101 @@
 import os
 import time
-import logging
 from telegram import Update
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
+from telegram.ext import Updater, CommandHandler, CallbackContext
 from github import Github
 import openai
 from dotenv import load_dotenv
 import requests
 
+load_dotenv()
+t_token = os.getenv("TELEGRAM_BOT_TOKEN")
+gh_token = os.getenv("GITHUB_ACCESS_TOKEN")
+oai_key = os.getenv("OPENAI_API_KEY")
+github_api = Github(gh_token)
+openai.api_key = oai_key
+gh_orgs = ['ethereum', 'bitcoin', 'yearn', 'makerdao', 'curvefi', 'sniswap', 'sushiswap', 'compound-finance', 'aave', 'balancer-labs', 'alchemix-finance', 'convex-eth']
 
-load_dotenv()  # This line loads the environment variables from the .env file
-
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-GITHUB_ACCESS_TOKEN = os.getenv("GITHUB_ACCESS_TOKEN")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-
-# Set up GitHub API
-github_api = Github(GITHUB_ACCESS_TOKEN)
-
-# Set up OpenAI API
-openai.api_key = OPENAI_API_KEY
-
-# List of GitHub orgs to monitor
-# GITHUB_ORGS = ['ethereum', 'yearn', 'makerdao', 'curvefi', 'uniswap', 'sushiswap', 'compound-finance', 'convex-eth', 'alchemix-finance', 'bitcoin']
-GITHUB_ORGS = ['yearn', 'makerdao']
-
-def summarize_diff(diff_text):
-    response = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
-        messages=[
-            {"role": "system", "content": "You are a diff sumarizer assistant. I will pass a PR diff and you will reply with a layman-readable summary for what relevant changes happened in the code. Reply with direct summaries."},
-            {"role": "user", "content": f"Summarize the following PR code diff: {diff_text}"}
-        ]
-    )
-    return response.choices[0].message['content']
-
-def start(update: Update, context: CallbackContext) -> None:
-    update.message.reply_text('Hi! I am a GitHub PR monitoring bot. Use the /monitor_prs command to start monitoring PRs!')
+def start(u: Update, c: CallbackContext) -> None:
+    u.message.reply_text('Hi! I am a GitHub PR monitoring bot. Use the /monitor_prs command to start monitoring PRs!')
 
 class PRMonitor:
     def __init__(self):
-        self.sent_prs = {}
+        self.sp = {}
 
-    def monitor_prs(self, context: CallbackContext):
-        chat_id = context.job.context
+    def m_prs(self, c: CallbackContext):
+        cid = c.job.context
+        if cid not in self.sp:
+            self.sp[cid] = {'s_prs': set(), 'm_start': time.time()}
+        m_start = self.sp[cid]['m_start']
 
-        if chat_id not in self.sent_prs:
-            self.sent_prs[chat_id] = set()
+        print("Checking PRs...")
 
-        for org_name in GITHUB_ORGS:
-            org = github_api.get_organization(org_name)
-
+        for o_name in gh_orgs:
+            org = github_api.get_organization(o_name)
             for repo in org.get_repos():
                 for pr in repo.get_pulls(state='open'):
-                    if pr.id in self.sent_prs[chat_id]:
+                    if pr.id in self.sp[cid]['s_prs'] or pr.created_at.timestamp() < m_start:
                         continue
 
+                    print(f"Found new PR: {pr.html_url}")
+
                     pr_title = pr.title
-                    pr_description = pr.body
+                    pr_desc = pr.body
+                    diff_resp = requests.get(pr.patch_url)
+                    diff_txt = diff_resp.text
+                    cm_msgs = "\n".join([cm.commit.message for cm in pr.get_commits()])
+                    full_txt = f"Title: {pr_title}\nDescription: {pr_desc}\nCommit messages: {cm_msgs}\nDiff: {diff_txt}"
+                    max_c = 10000
+                    chunks = [full_txt[i:i + max_c] for i in range(0, len(full_txt), max_c)]
 
-                    # Download the diff file using the patch_url
-                    diff_response = requests.get(pr.patch_url)
-                    diff_text = diff_response.text
+                    print("Summarizing PR...")
 
-                    # Get commit messages
-                    commit_messages = "\n".join([commit.commit.message for commit in pr.get_commits()])
-
-                    # Split the diff_text into chunks of 10000 characters or less
-                    max_chunk_size = 10000
-                    diff_chunks = [diff_text[i:i + max_chunk_size] for i in range(0, len(diff_text), max_chunk_size)]
-
-                    # Summarize each chunk and concatenate the summaries
                     summaries = []
-                    for chunk in diff_chunks:
-                        # Truncate the diff chunk to ensure it doesn't exceed the token limit
-                        title_desc_and_commits = f"Title: {pr_title}\nDescription: {pr_description}\nCommit messages: {commit_messages}\n"
-                        tokens_reserved_for_title_desc_and_commits = len(openai.api.encoder.encode(title_desc_and_commits))
-                        max_diff_tokens = 4097 - tokens_reserved_for_title_desc_and_commits
-                        diff_chunk_truncated = openai.api.encoder.decode(openai.api.encoder.encode(chunk)[:max_diff_tokens])
-
-                        response = openai.ChatCompletion.create(
+                    for chunk in chunks:
+                        res = openai.ChatCompletion.create(
                             model="gpt-3.5-turbo",
                             messages=[
                                 {"role": "system", "content": "You are a helpful assistant."},
-                                {"role": "user", "content": f"Summarize the following PR title, description, commit messages, and code diff chunk:\n\n{title_desc_and_commits}Diff: {diff_chunk_truncated}"}
+                                {"role": "user", "content": f"Summarize the following PR information:\n\n{chunk}"}
                             ]
                         )
-                        summaries.append(response.choices[0].message['content'])
+                        summaries.append(res.choices[0].message['content'])
 
-                    # Concatenate the summaries
-                    final_summary = " ".join(summaries)
+                    res = openai.ChatCompletion.create(
+                        model="gpt-3.5-turbo",
+                        messages=[
+                            {"role": "system", "content": "You are a helpful assistant."},
+                            {"role": "user", "content": f"Summarize the following summaries:\n\n{' '.join(summaries)}"}
+                        ]
+                    )
+                    f_summary = res.choices[0].message['content']
 
-                    context.bot.send_message(chat_id, f"{org_name}: {final_summary}\n\n📡 {pr.html_url}")
-                    self.sent_prs[chat_id].add(pr.id)
+                    print(f"Sending summary: {f_summary}")
 
-def monitor_prs(update: Update, context: CallbackContext) -> None:
-    interval = 60  # Time in seconds between PR checks
-    chat_id = update.effective_chat.id
-    pr_monitor = PRMonitor()
+                    c.bot.send_message(cid, f"*PR Summary:* {f_summary}\n\n*PR Link:* {pr.html_url}", parse_mode='Markdown')
+                    self.sp[cid]['s_prs'].add(pr.id)
 
-    if 'monitor_prs_job' in context.chat_data:
-        update.message.reply_text('PR monitoring is already running.')
+def monitor_prs(u: Update, c: CallbackContext) -> None:
+    interval = 60
+    cid = u.effective_chat.id
+    pr_mon = PRMonitor()
+
+    if 'monitor_prs_job' in c.chat_data:
+        u.message.reply_text('PR monitoring is already running.')
     else:
-        context.chat_data['monitor_prs_job'] = context.job_queue.run_repeating(pr_monitor.monitor_prs, interval, context=chat_id)
-        update.message.reply_text('Started monitoring PRs.')
+        c.chat_data['monitor_prs_job'] = c.job_queue.run_repeating(pr_mon.m_prs, interval, context=cid)
+        u.message.reply_text('Started monitoring PRs.')
 
-def stop_monitor(update: Update, context: CallbackContext) -> None:
-    if 'monitor_prs_job' not in context.chat_data:
-        update.message.reply_text('No PR monitoring is currently running.')
+def stop_monitor(u: Update, c: CallbackContext) -> None:
+    if 'monitor_prs_job' not in c.chat_data:
+        u.message.reply_text('No PR monitoring is currently running.')
     else:
-        context.chat_data['monitor_prs_job'].schedule_removal()
-        del context.chat_data['monitor_prs_job']
-        update.message.reply_text('Stopped monitoring PRs.')
+        c.chat_data['monitor_prs_job'].schedule_removal()
+        del c.chat_data['monitor_prs_job']
+        u.message.reply_text('Stopped monitoring PRs.')
 
 def main():
-    updater = Updater(TELEGRAM_BOT_TOKEN)
+    updater = Updater(t_token)
     dispatcher = updater.dispatcher
 
     dispatcher.add_handler(CommandHandler("start", start))
