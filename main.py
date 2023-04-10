@@ -32,11 +32,11 @@ class PRMonitor:
     def get_org_repos(self, o_name, since):
         try:
             org = github_api.get_organization(o_name)
-            repos = org.get_repos(since=since.isoformat())
+            repos = org.get_repos()
 
             # Check rate limit remaining and reset time
-            rate_limit_remaining = int(repos.raw_headers.get("x-ratelimit-remaining", "60"))
-            rate_limit_reset = int(repos.raw_headers.get("x-ratelimit-reset", "0"))
+            rate_limit_remaining = int(repos[0]._rawData.get('raw_headers', {}).get("x-ratelimit-remaining", "60")) if repos else 60
+            rate_limit_reset = int(repos[0]._rawData.get('raw_headers', {}).get("x-ratelimit-reset", "0")) if repos else 0
 
             if rate_limit_remaining == 0:
                 reset_time = datetime.fromtimestamp(rate_limit_reset)
@@ -44,8 +44,11 @@ class PRMonitor:
                 print(f"Rate limit exceeded. Waiting for {wait_time} seconds.")
                 time.sleep(wait_time)
 
-            return list(repos)  # Convert to list to make it cacheable
+            # Filter repositories based on their creation date
+            repos = [repo for repo in repos if repo.created_at >= since]
 
+            return repos
+        
         except GithubException as e:
             print(f"Error fetching organization {o_name}: {e}")
             return []
