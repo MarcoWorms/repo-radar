@@ -1,15 +1,13 @@
 # made entirely with gpt4 ;)
 
 import os
+import time
 from telegram import Update
 from telegram.ext import Updater, CommandHandler, CallbackContext
 from github import Github, GithubException
 import openai
 from dotenv import load_dotenv
 import requests
-import time
-from functools import lru_cache
-from datetime import datetime, timedelta
 
 load_dotenv()
 t_token = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -17,7 +15,7 @@ gh_token = os.getenv("GITHUB_ACCESS_TOKEN")
 oai_key = os.getenv("OPENAI_API_KEY")
 github_api = Github(gh_token)
 openai.api_key = oai_key
-gh_orgs = ['yearn', 'makerdao', 'curvefi', 'Uniswap', 'sushiswap', 'compound-finance', 'aave', 'balancer-labs', 'alchemix-finance', 'redacted-cartel']
+gh_orgs = ['yearn', 'makerdao', 'curvefi', 'uniswap', 'sushiswap', 'compound-finance', 'aave', 'balancer-labs', 'alchemix-finance', 'redacted-cartel']
 
 def start(u: Update, c: CallbackContext) -> None:
     u.message.reply_text('Hi! I am a GitHub PR monitoring bot. Use the /monitor_prs command to start monitoring PRs!')
@@ -25,33 +23,6 @@ def start(u: Update, c: CallbackContext) -> None:
 class PRMonitor:
     def __init__(self):
         self.sp = {}
-        self.org_cache = {}  # Cache for organization data
-        self.last_updated = datetime.now() - timedelta(days=1)  # Initial value for last update check
-
-    @lru_cache(maxsize=None)
-    def get_org_repos(self, o_name, since):
-        try:
-            org = github_api.get_organization(o_name)
-            repos = org.get_repos()
-
-            # Check rate limit remaining and reset time
-            rate_limit_remaining = int(repos[0]._rawData.get('raw_headers', {}).get("x-ratelimit-remaining", "60")) if repos else 60
-            rate_limit_reset = int(repos[0]._rawData.get('raw_headers', {}).get("x-ratelimit-reset", "0")) if repos else 0
-
-            if rate_limit_remaining == 0:
-                reset_time = datetime.fromtimestamp(rate_limit_reset)
-                wait_time = (reset_time - datetime.now()).total_seconds()
-                print(f"Rate limit exceeded. Waiting for {wait_time} seconds.")
-                time.sleep(wait_time)
-
-            # Filter repositories based on their creation date
-            repos = [repo for repo in repos if repo.created_at >= since]
-
-            return repos
-        
-        except GithubException as e:
-            print(f"Error fetching organization {o_name}: {e}")
-            return []
 
     def m_prs(self, c: CallbackContext):
         cid = c.job.context
@@ -61,15 +32,16 @@ class PRMonitor:
 
         print("Checking PRs...")
 
-        current_time = datetime.now()
-
         for o_name in gh_orgs:
-            if o_name not in self.org_cache or current_time - self.last_updated > timedelta(minutes=30):
-                self.org_cache[o_name] = self.get_org_repos(o_name, self.last_updated)
+            try:
+                org = github_api.get_organization(o_name)
+            except GithubException as e:
+                print(f"Error fetching organization {o_name}: {e}")
+                continue
 
-            for repo in self.org_cache[o_name]:
+            for repo in org.get_repos():
                 try:
-                    pr_list = repo.get_pulls(state='open', per_page=10)  # Fetch paginated results
+                    pr_list = repo.get_pulls(state='open')
                 except GithubException as e:
                     print(f"Error fetching PRs for repo {repo.name}: {e}")
                     continue
@@ -134,17 +106,14 @@ class PRMonitor:
                         c.bot.send_message(cid, f"*PR Summary:* {f_summary}\n\n*PR Link:* {pr.html_url}", parse_mode='Markdown')
                     except Exception as e:
                         print(f"Error sending message: {e}")
-                        self.sp[cid]['s_prs'].add(pr.id)
-
-            self.last_updated = current_time
-            time.sleep(1)  # Sleep for a short duration to avoid rate-limiting
+                    self.sp[cid]['s_prs'].add(pr.id)
 
 def monitor_prs(u: Update, c: CallbackContext) -> None:
     if u.effective_chat.id != -1001798829382:
         u.message.reply_text("Sorry, this bot is limited to a specific group.")
         return
 
-    interval = 60
+    interval = 60 * 60 # run every 60 minutes
     cid = u.effective_chat.id
     pr_mon = PRMonitor()
 
@@ -171,6 +140,12 @@ def main():
     dispatcher.add_handler(CommandHandler("stop_monitor", stop_monitor))
 
     updater.start_polling()
+
+    chat_id = -1001798829382
+    interval = 61 * 60  # run every 61 minutes
+    pr_mon = PRMonitor()
+    updater.job_queue.run_repeating(pr_mon.m_prs, interval, context=chat_id)
+
     updater.idle()
 
 if __name__ == "__main__":
