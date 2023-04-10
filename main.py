@@ -27,8 +27,8 @@ class PRMonitor:
     def m_prs(self, c: CallbackContext):
         cid = c.job.context
         if cid not in self.sp:
-            self.sp[cid] = {'s_prs': set(), 'm_start': time.time()}
-        m_start = self.sp[cid]['m_start']
+            self.sp[cid] = {'s_prs': set(), 'last_pr_timestamp': time.time()}
+        last_pr_timestamp = self.sp[cid]['last_pr_timestamp']
 
         print("Checking PRs...")
 
@@ -49,7 +49,7 @@ class PRMonitor:
                     continue
 
                 for pr in pr_list:
-                    if pr.id in self.sp[cid]['s_prs'] or pr.created_at.timestamp() < m_start:
+                    if pr.id in self.sp[cid]['s_prs'] or pr.created_at.timestamp() <= last_pr_timestamp:
                         continue
 
                     print(f"Found new PR: {pr.html_url}")
@@ -109,6 +109,8 @@ class PRMonitor:
                     except Exception as e:
                         print(f"Error sending message: {e}")
                     self.sp[cid]['s_prs'].add(pr.id)
+        self.sp[cid]['last_pr_timestamp'] = time.time()
+
 
 def monitor_prs(u: Update, c: CallbackContext) -> None:
     if u.effective_chat.id != -1001798829382:
