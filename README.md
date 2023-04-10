@@ -1,6 +1,6 @@
 # [t.me/reporadar](https://t.me/reporadar)
 
-![](https://licensebuttons.net/p/zero/1.0/88x31.png)
+[![](https://licensebuttons.net/p/zero/1.0/88x31.png)](https://creativecommons.org/publicdomain/zero/1.0/)
 
 Monitors and summarizes all PRs made in the largest DeFi github orgs, posts in a telegram feed
 
