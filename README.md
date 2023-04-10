@@ -1,4 +1,4 @@
-# [t.me/reporadar](t.me/reporadar)
+# [t.me/reporadar](https://t.me/reporadar)
 
 Monitors and summarizes all PRs made in the largest DeFi github orgs, posts in a telegram feed
 
