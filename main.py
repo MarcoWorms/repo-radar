@@ -13,7 +13,7 @@ gh_token = os.getenv("GITHUB_ACCESS_TOKEN")
 oai_key = os.getenv("OPENAI_API_KEY")
 github_api = Github(gh_token)
 openai.api_key = oai_key
-gh_orgs = ['ethereum', 'bitcoin', 'yearn', 'makerdao', 'curvefi', 'sniswap', 'sushiswap', 'compound-finance', 'aave', 'balancer-labs', 'alchemix-finance', 'convex-eth']
+gh_orgs = ['ethereum', 'bitcoin', 'yearn', 'makerdao', 'curvefi', 'uniswap', 'sushiswap', 'compound-finance', 'aave', 'balancer', 'alchemix-finance', 'convex-eth']
 
 def start(u: Update, c: CallbackContext) -> None:
     u.message.reply_text('Hi! I am a GitHub PR monitoring bot. Use the /monitor_prs command to start monitoring PRs!')
