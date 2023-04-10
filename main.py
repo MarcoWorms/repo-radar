@@ -17,6 +17,8 @@ github_api = Github(gh_token)
 openai.api_key = oai_key
 gh_orgs = ['ethereum', 'bitcoin', 'yearn', 'makerdao', 'curvefi', 'uniswap', 'sushiswap', 'compound-finance', 'aave', 'balancer-labs', 'alchemix-finance', 'redacted-cartel']
 
+run_every = 60 * 65 # runs every 65 minutes to avoid 5k requests in 1 hour limit, the 5 extra minutes is the time it takes doing requests
+
 def start(u: Update, c: CallbackContext) -> None:
     u.message.reply_text('Hi! I am a GitHub PR monitoring bot. Use the /monitor_prs command to start monitoring PRs!')
 
@@ -27,7 +29,7 @@ class PRMonitor:
     def m_prs(self, c: CallbackContext):
         cid = c.job.context
         if cid not in self.sp:
-            self.sp[cid] = {'s_prs': set(), 'last_pr_timestamp': time.time()}
+            self.sp[cid] = {'s_prs': set(), 'last_pr_timestamp': time.time() - run_every}
         last_pr_timestamp = self.sp[cid]['last_pr_timestamp']
 
         print("Checking PRs...")
@@ -60,7 +62,7 @@ class PRMonitor:
                     diff_txt = diff_resp.text
                     cm_msgs = "\n".join([cm.commit.message for cm in pr.get_commits()])
                     full_txt = f"Title: {pr_title}\nDescription: {pr_desc}\nCommit messages: {cm_msgs}\nDiff: {diff_txt}"
-                    max_c = 8000
+                    max_c = 4000
                     chunks = [full_txt[i:i + max_c] for i in range(0, len(full_txt), max_c)]
 
                     print("Summarizing PR...")
@@ -74,7 +76,7 @@ class PRMonitor:
                             messages=[
                                 {
                                     "role": "system",
-                                    "content": "You are an AI assistant specialized in summarizing GitHub pull requests. Your task is to provide concise and informative summaries that help users understand the most important and relevant changes made in the code. Avoid mentioning less important details."
+                                    "content": "You are an AI assistant specialized in summarizing GitHub pull requests. Your task is to provide concise and informative summaries that help users understand the most important and relevant changes made in the code. Avoid mentioning less important details, make it short and only up to 500 characters"
                                 },
                                 {
                                     "role": "user",
@@ -91,7 +93,7 @@ class PRMonitor:
                             messages=[
                                 {
                                     "role": "system",
-                                    "content": "You are an AI assistant that can generate a brief and coherent summary based on multiple summaries. Your task is to provide a single, easily understandable summary that highlights the most important information from the given summaries."
+                                    "content": "You are an AI assistant that can generate a brief and coherent summary based on multiple summaries. Your task is to provide a single, easily understandable summary that highlights the most important information from the given summaries, make it short and only up to 500 characters"
                                 },
                                 {
                                     "role": "user",
@@ -117,7 +119,7 @@ def monitor_prs(u: Update, c: CallbackContext) -> None:
         u.message.reply_text("Sorry, this bot is limited to a specific group.")
         return
 
-    interval = 60 * 60 # run every 60 minutes
+    interval = run_every
     cid = u.effective_chat.id
     pr_mon = PRMonitor()
 
