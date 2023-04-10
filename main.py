@@ -1,8 +1,10 @@
+# made entirely by gpt ;)
+
 import os
 import time
 from telegram import Update
 from telegram.ext import Updater, CommandHandler, CallbackContext
-from github import Github
+from github import Github, GithubException
 import openai
 from dotenv import load_dotenv
 import requests
@@ -13,7 +15,7 @@ gh_token = os.getenv("GITHUB_ACCESS_TOKEN")
 oai_key = os.getenv("OPENAI_API_KEY")
 github_api = Github(gh_token)
 openai.api_key = oai_key
-gh_orgs = ['ethereum', 'bitcoin', 'yearn', 'makerdao', 'curvefi', 'uniswap', 'sushiswap', 'compound-finance', 'aave', 'balancer', 'alchemix-finance', 'convex-eth']
+gh_orgs = ['yearn', 'makerdao', 'curvefi', 'Uniswap', 'sushiswap', 'compound-finance', 'aave', 'balancer-labs', 'alchemix-finance', 'convex-eth']
 
 def start(u: Update, c: CallbackContext) -> None:
     u.message.reply_text('Hi! I am a GitHub PR monitoring bot. Use the /monitor_prs command to start monitoring PRs!')
@@ -31,9 +33,20 @@ class PRMonitor:
         print("Checking PRs...")
 
         for o_name in gh_orgs:
-            org = github_api.get_organization(o_name)
+            try:
+                org = github_api.get_organization(o_name)
+            except GithubException as e:
+                print(f"Error fetching organization {o_name}: {e}")
+                continue
+
             for repo in org.get_repos():
-                for pr in repo.get_pulls(state='open'):
+                try:
+                    pr_list = repo.get_pulls(state='open')
+                except GithubException as e:
+                    print(f"Error fetching PRs for repo {repo.name}: {e}")
+                    continue
+
+                for pr in pr_list:
                     if pr.id in self.sp[cid]['s_prs'] or pr.created_at.timestamp() < m_start:
                         continue
 
@@ -72,7 +85,10 @@ class PRMonitor:
 
                     print(f"Sending summary: {f_summary}")
 
-                    c.bot.send_message(cid, f"*PR Summary:* {f_summary}\n\n*PR Link:* {pr.html_url}", parse_mode='Markdown')
+                    try:
+                        c.bot.send_message(cid, f"*PR Summary:* {f_summary}\n\n*PR Link:* {pr.html_url}", parse_mode='Markdown')
+                    except Exception as e:
+                        print(f"Error sending message: {e}")
                     self.sp[cid]['s_prs'].add(pr.id)
 
 def monitor_prs(u: Update, c: CallbackContext) -> None:
@@ -107,3 +123,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
