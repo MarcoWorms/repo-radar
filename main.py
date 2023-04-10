@@ -15,7 +15,7 @@ gh_token = os.getenv("GITHUB_ACCESS_TOKEN")
 oai_key = os.getenv("OPENAI_API_KEY")
 github_api = Github(gh_token)
 openai.api_key = oai_key
-gh_orgs = ['yearn', 'makerdao', 'curvefi', 'Uniswap', 'sushiswap', 'compound-finance', 'aave', 'balancer-labs', 'alchemix-finance', 'convex-eth']
+gh_orgs = ['yearn', 'makerdao', 'curvefi', 'uniswap', 'sushiswap', 'compound-finance', 'aave', 'balancer-labs', 'alchemix-finance', 'convex-eth']
 
 def start(u: Update, c: CallbackContext) -> None:
     u.message.reply_text('Hi! I am a GitHub PR monitoring bot. Use the /monitor_prs command to start monitoring PRs!')
@@ -64,23 +64,40 @@ class PRMonitor:
                     print("Summarizing PR...")
 
                     summaries = []
+                    res = None
+
                     for chunk in chunks:
                         res = openai.ChatCompletion.create(
                             model="gpt-3.5-turbo",
                             messages=[
-                                {"role": "system", "content": "You are a helpful assistant."},
-                                {"role": "user", "content": f"Summarize the following PR information:\n\n{chunk}"}
+                                {
+                                    "role": "system",
+                                    "content": "You are an AI assistant specialized in summarizing GitHub pull requests. Your task is to provide concise and informative summaries that help users understand the most important and relevant changes made in the code. Avoid mentioning less important details."
+                                },
+                                {
+                                    "role": "user",
+                                    "content": f"Summarize the following PR information, focusing on the most important changes:\n\n{chunk}"
+                                }
                             ]
+
                         )
                         summaries.append(res.choices[0].message['content'])
 
-                    res = openai.ChatCompletion.create(
-                        model="gpt-3.5-turbo",
-                        messages=[
-                            {"role": "system", "content": "You are a helpful assistant."},
-                            {"role": "user", "content": f"Summarize the following summaries:\n\n{' '.join(summaries)}"}
-                        ]
-                    )
+                    if len(chunks) > 1:
+                        res = openai.ChatCompletion.create(
+                            model="gpt-3.5-turbo",
+                            messages=[
+                                {
+                                    "role": "system",
+                                    "content": "You are an AI assistant that can generate a brief and coherent summary based on multiple summaries. Your task is to provide a single, easily understandable summary that highlights the most important information from the given summaries."
+                                },
+                                {
+                                    "role": "user",
+                                    "content": f"Summarize the following summaries:\n\n{' '.join(summaries)}"
+                                }
+                            ]
+                        )
+                    
                     f_summary = res.choices[0].message['content']
 
                     print(f"Sending summary: {f_summary}")
