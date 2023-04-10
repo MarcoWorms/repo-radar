@@ -15,7 +15,7 @@ gh_token = os.getenv("GITHUB_ACCESS_TOKEN")
 oai_key = os.getenv("OPENAI_API_KEY")
 github_api = Github(gh_token)
 openai.api_key = oai_key
-gh_orgs = ['yearn', 'makerdao', 'curvefi', 'uniswap', 'sushiswap', 'compound-finance', 'aave', 'balancer-labs', 'alchemix-finance', 'redacted-cartel']
+gh_orgs = ['ethereum', 'bitcoin', 'yearn', 'makerdao', 'curvefi', 'uniswap', 'sushiswap', 'compound-finance', 'aave', 'balancer-labs', 'alchemix-finance', 'redacted-cartel']
 
 def start(u: Update, c: CallbackContext) -> None:
     u.message.reply_text('Hi! I am a GitHub PR monitoring bot. Use the /monitor_prs command to start monitoring PRs!')
@@ -33,6 +33,7 @@ class PRMonitor:
         print("Checking PRs...")
 
         for o_name in gh_orgs:
+            print(o_name)
             try:
                 org = github_api.get_organization(o_name)
             except GithubException as e:
@@ -40,6 +41,7 @@ class PRMonitor:
                 continue
 
             for repo in org.get_repos():
+                print(repo.name)
                 try:
                     pr_list = repo.get_pulls(state='open')
                 except GithubException as e:
@@ -58,7 +60,7 @@ class PRMonitor:
                     diff_txt = diff_resp.text
                     cm_msgs = "\n".join([cm.commit.message for cm in pr.get_commits()])
                     full_txt = f"Title: {pr_title}\nDescription: {pr_desc}\nCommit messages: {cm_msgs}\nDiff: {diff_txt}"
-                    max_c = 10000
+                    max_c = 8000
                     chunks = [full_txt[i:i + max_c] for i in range(0, len(full_txt), max_c)]
 
                     print("Summarizing PR...")
