@@ -1,5 +1,3 @@
-# made entirely with gpt4 ;)
-
 import os
 import time
 from telegram import Update
@@ -9,37 +7,72 @@ import openai
 from dotenv import load_dotenv
 import requests
 
+# Load environment variables
 load_dotenv()
 t_token = os.getenv("TELEGRAM_BOT_TOKEN")
 gh_token = os.getenv("GITHUB_ACCESS_TOKEN")
 oai_key = os.getenv("OPENAI_API_KEY")
+
+# Initialize APIs
 github_api = Github(gh_token)
 openai.api_key = oai_key
-gh_orgs = ['ethereum', 'bitcoin', 'yearn', 'makerdao', 'curvefi', 'uniswap', 'sushiswap', 'compound-finance', 'aave', 'balancer-labs', 'alchemix-finance', 'redacted-cartel']
 
-run_every = 60 * 65 # runs every 65 minutes to avoid 5k requests in 1 hour limit, the 5 extra minutes is the time it takes doing requests
+# List of GitHub organizations to monitor
+gh_orgs = [
+    'ethereum', 'bitcoin', 'yearn', 'makerdao', 'curvefi', 'uniswap',
+    'sushiswap', 'compound-finance', 'aave', 'balancer-labs',
+    'alchemix-finance', 'redacted-cartel'
+]
 
-def start(u: Update, c: CallbackContext) -> None:
-    u.message.reply_text('Hi! I am a GitHub PR monitoring bot. Use the /monitor_prs command to start monitoring PRs!')
+# Set the interval to run every 65 minutes (to avoid GitHub's rate limit)
+run_every = 60 * 65
+
+def start(update: Update, context: CallbackContext) -> None:
+    update.message.reply_text('Hi! I am a GitHub PR monitoring bot. Use the /monitor_prs command to start monitoring PRs!')
 
 class PRMonitor:
     def __init__(self):
-        self.sp = {}
+        self.state_per_chat = {}
 
-    def m_prs(self, c: CallbackContext):
-        cid = c.job.context
-        if cid not in self.sp:
-            self.sp[cid] = {'s_prs': set(), 'last_pr_timestamp': time.time() - run_every}
-        last_pr_timestamp = self.sp[cid]['last_pr_timestamp']
+   def recursive_summarize(self, summaries):
+        if len(summaries) == 1:
+            return summaries[0]
+
+        new_summaries = []
+        for i in range(0, len(summaries), 4):
+            combined_summaries = ' '.join(summaries[i:i + 4])
+
+            response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are an AI assistant that can generate a brief and coherent summary based on multiple summaries made from parts of the same corpus of text. Your task is to provide a single, easily understandable summary that highlights the most important information from the given summaries, make it short and only up to 500 characters"
+                    },
+                    {
+                        "role": "user",
+                        "content": f"Summarize the following summaries:\n\n{combined_summaries}"
+                    }
+                ]
+            )
+            new_summaries.append(response.choices[0].message['content'])
+
+        return self.recursive_summarize(new_summaries)
+
+    def monitor_prs(self, context: CallbackContext):
+        chat_id = context.job.context
+        if chat_id not in self.state_per_chat:
+            self.state_per_chat[chat_id] = {'seen_prs': set(), 'last_pr_timestamp': time.time() - run_every}
+        last_pr_timestamp = self.state_per_chat[chat_id]['last_pr_timestamp']
 
         print("Checking PRs...")
 
-        for o_name in gh_orgs:
-            print(o_name)
+        for org_name in gh_orgs:
+            print(org_name)
             try:
-                org = github_api.get_organization(o_name)
+                org = github_api.get_organization(org_name)
             except GithubException as e:
-                print(f"Error fetching organization {o_name}: {e}")
+                print(f"Error fetching organization {org_name}: {e}")
                 continue
 
             for repo in org.get_repos():
@@ -51,7 +84,7 @@ class PRMonitor:
                     continue
 
                 for pr in pr_list:
-                    if pr.id in self.sp[cid]['s_prs'] or pr.created_at.timestamp() <= last_pr_timestamp:
+                    if pr.id in self.state_per_chat[chat_id]['seen_prs'] or pr.created_at.timestamp() <= last_pr_timestamp:
                         continue
 
                     print(f"Found new PR: {pr.html_url}")
@@ -62,21 +95,21 @@ class PRMonitor:
                     diff_txt = diff_resp.text
                     cm_msgs = "\n".join([cm.commit.message for cm in pr.get_commits()])
                     full_txt = f"Title: {pr_title}\nDescription: {pr_desc}\nCommit messages: {cm_msgs}\nDiff: {diff_txt}"
-                    max_c = 4000
-                    chunks = [full_txt[i:i + max_c] for i in range(0, len(full_txt), max_c)]
+                    max_chars = 4000
+                    chunks = [full_txt[i:i + max_chars] for i in range(0, len(full_txt), max_chars)]
 
                     print("Summarizing PR...")
 
                     summaries = []
-                    res = None
+                    response = None
 
                     for chunk in chunks:
-                        res = openai.ChatCompletion.create(
+                        response = openai.ChatCompletion.create(
                             model="gpt-3.5-turbo",
                             messages=[
                                 {
                                     "role": "system",
-                                    "content": "You are an AI assistant specialized in summarizing GitHub pull requests. Your task is to provide concise and informative summaries that help users understand the most important and relevant changes made in the code. Avoid mentioning less important details, make it short and only up to 500 characters, avoid metacomments like 'this PR...' just be direct."
+                                    "content": "You are an AI assistant specialized in summarizing GitHub pull requests. Your task is to provide concise and informative summaries that help users understand the most important and relevant changes made in the code. Avoid mentioning less important details, make it short and only up to 500 characters, focus on explaining code changes."
                                 },
                                 {
                                     "role": "user",
@@ -85,57 +118,48 @@ class PRMonitor:
                             ]
 
                         )
-                        summaries.append(res.choices[0].message['content'])
+                        summaries.append(response.choices[0].message['content'])
 
                     if len(chunks) > 1:
-                        res = openai.ChatCompletion.create(
-                            model="gpt-3.5-turbo",
-                            messages=[
-                                {
-                                    "role": "system",
-                                    "content": "You are an AI assistant that can generate a brief and coherent summary based on multiple summaries mades from parts of the same corpus of text. Your task is to provide a single, easily understandable summary that highlights the most important information from the given summaries, make it short and only up to 500 characters"
-                                },
-                                {
-                                    "role": "user",
-                                    "content": f"Summarize the following summaries:\n\n{' '.join(summaries)}"
-                                }
-                            ]
-                        )
-                    
-                    f_summary = res.choices[0].message['content']
+                        final_summary = self.recursive_summarize(summaries)
+                    else:
+                        final_summary = summaries[0]
 
-                    print(f"Sending summary: {f_summary}")
+                    print(f"Sending summary: {final_summary}")
+                    
+                    final_summary = response.choices[0].message['content']
+
+                    print(f"Sending summary: {final_summary}")
 
                     try:
-                        c.bot.send_message(cid, f"*{o_name}*\n\n{f_summary}\n\n🔗 {pr.html_url}", parse_mode='Markdown', disable_web_page_preview=True)
+                        context.bot.send_message(chat_id, f"*{org_name}*\n\n{final_summary}\n\n🔗 {pr.html_url}", parse_mode='Markdown', disable_web_page_preview=True)
                     except Exception as e:
                         print(f"Error sending message: {e}")
-                    self.sp[cid]['s_prs'].add(pr.id)
-        self.sp[cid]['last_pr_timestamp'] = time.time()
+                    self.state_per_chat[chat_id]['seen_prs'].add(pr.id)
+        self.state_per_chat[chat_id]['last_pr_timestamp'] = time.time()
 
-
-def monitor_prs(u: Update, c: CallbackContext) -> None:
-    if u.effective_chat.id != -1001798829382:
-        u.message.reply_text("Sorry, this bot is limited to a specific group.")
+def monitor_prs(update: Update, context: CallbackContext) -> None:
+    if update.effective_chat.id != -1001798829382:
+        update.message.reply_text("Sorry, this bot is limited to a specific group.")
         return
 
     interval = run_every
-    cid = u.effective_chat.id
-    pr_mon = PRMonitor()
+    chat_id = update.effective_chat.id
+    pr_monitor = PRMonitor()
 
-    if 'monitor_prs_job' in c.chat_data:
-        u.message.reply_text('PR monitoring is already running.')
+    if 'monitor_prs_job' in context.chat_data:
+        update.message.reply_text('PR monitoring is already running.')
     else:
-        c.chat_data['monitor_prs_job'] = c.job_queue.run_repeating(pr_mon.m_prs, interval, context=cid)
-        u.message.reply_text('Started monitoring PRs.')
+        context.chat_data['monitor_prs_job'] = context.job_queue.run_repeating(pr_monitor.monitor_prs, interval, context=chat_id)
+        update.message.reply_text('Started monitoring PRs.')
 
-def stop_monitor(u: Update, c: CallbackContext) -> None:
-    if 'monitor_prs_job' not in c.chat_data:
-        u.message.reply_text('No PR monitoring is currently running.')
+def stop_monitor(update: Update, context: CallbackContext) -> None:
+    if 'monitor_prs_job' not in context.chat_data:
+        update.message.reply_text('No PR monitoring is currently running.')
     else:
-        c.chat_data['monitor_prs_job'].schedule_removal()
-        del c.chat_data['monitor_prs_job']
-        u.message.reply_text('Stopped monitoring PRs.')
+        context.chat_data['monitor_prs_job'].schedule_removal()
+        del context.chat_data['monitor_prs_job']
+        update.message.reply_text('Stopped monitoring PRs.')
 
 def main():
     updater = Updater(t_token)
@@ -148,9 +172,9 @@ def main():
     updater.start_polling()
 
     chat_id = -1001798829382
-    interval = run_every  # run every 61 minutes
-    pr_mon = PRMonitor()
-    updater.job_queue.run_repeating(pr_mon.m_prs, interval, context=chat_id)
+    interval = run_every
+    pr_monitor = PRMonitor()
+    updater.job_queue.run_repeating(pr_monitor.monitor_prs, interval, context=chat_id)
 
     updater.idle()
 
