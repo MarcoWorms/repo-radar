@@ -34,7 +34,7 @@ class PRMonitor:
     def __init__(self):
         self.state_per_chat = {}
 
-   def recursive_summarize(self, summaries):
+    def recursive_summarize(self, summaries):
         if len(summaries) == 1:
             return summaries[0]
 
