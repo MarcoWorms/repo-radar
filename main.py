@@ -21,7 +21,7 @@ openai.api_key = oai_key
 gh_orgs = [
     'ethereum', 'bitcoin', 'yearn', 'makerdao', 'curvefi', 'uniswap',
     'sushiswap', 'compound-finance', 'aave', 'balancer-labs',
-    'alchemix-finance', 'redacted-cartel'
+    'alchemix-finance', 'redacted-cartel', 'manifoldfinance'
 ]
 
 # Set the interval to run every 65 minutes (to avoid GitHub's rate limit)
