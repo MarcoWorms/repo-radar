@@ -95,46 +95,53 @@ class PRMonitor:
                     diff_txt = diff_resp.text
                     cm_msgs = "\n".join([cm.commit.message for cm in pr.get_commits()])
                     full_txt = f"Title: {pr_title}\nDescription: {pr_desc}\nCommit messages: {cm_msgs}\nDiff: {diff_txt}"
-                    max_chars = 4000
+                    max_chars = 7500
                     chunks = [full_txt[i:i + max_chars] for i in range(0, len(full_txt), max_chars)]
 
                     print("Summarizing PR...")
 
-                    summaries = []
-                    response = None
-
-                    for chunk in chunks:
-                        response = openai.ChatCompletion.create(
-                            model="gpt-3.5-turbo",
-                            messages=[
-                                {
-                                    "role": "system",
-                                    "content": "You are an AI assistant specialized in summarizing GitHub pull requests. Your task is to provide concise and informative summaries that help users understand the most important and relevant changes made in the code. Avoid mentioning less important details, make it short and only up to 500 characters, focus on explaining code changes."
-                                },
-                                {
-                                    "role": "user",
-                                    "content": f"Summarize the following PR information, focusing on the most important changes:\n\n{chunk}"
-                                }
-                            ]
-
-                        )
-                        summaries.append(response.choices[0].message['content'])
-
-                    if len(chunks) > 1:
-                        final_summary = self.recursive_summarize(summaries)
-                    else:
-                        final_summary = summaries[0]
-
-                    print(f"Sending summary: {final_summary}")
-                    
-                    final_summary = response.choices[0].message['content']
-
-                    print(f"Sending summary: {final_summary}")
-
                     try:
-                        context.bot.send_message(chat_id, f"*{org_name}*\n\n{final_summary}\n\n🔗 {pr.html_url}", parse_mode='Markdown', disable_web_page_preview=True)
+                        summaries = []
+                        response = None
+
+                        for chunk in chunks:
+                            response = openai.ChatCompletion.create(
+                                model="gpt-3.5-turbo",
+                                messages=[
+                                    {
+                                        "role": "system",
+                                        "content": "You are an AI assistant specialized in summarizing GitHub pull requests. Your task is to provide concise and informative summaries that help users understand the most important and relevant changes made in the code. Avoid mentioning less important details, make it short and only up to 500 characters, focus on explaining code changes."
+                                    },
+                                    {
+                                        "role": "user",
+                                        "content": f"Summarize the following PR information, focusing on the most important changes:\n\n{chunk}"
+                                    }
+                                ]
+
+                            )
+                            summaries.append(response.choices[0].message['content'])
+
+                        if len(chunks) > 1:
+                            final_summary = self.recursive_summarize(summaries)
+                        else:
+                            final_summary = summaries[0]
+
+                        print(f"Sending summary: {final_summary}")
+
                     except Exception as e:
-                        print(f"Error sending message: {e}")
+                        print(f"Error generating summary with OpenAI API: {e}")
+                        final_summary = f"{pr_title}\n\n_Summary unavailable, could not reach OpenAI._"
+                        try:
+                            context.bot.send_message(chat_id, f"*{org_name} / {repo.name}*\n\n{final_summary}\n\n🔗 {pr.html_url}", parse_mode='Markdown', disable_web_page_preview=True)
+                        except Exception as e:
+                            print(f"Error sending message: {e}")
+
+                    else:
+                        try:
+                            context.bot.send_message(chat_id, f"*{org_name} / {repo.name}*\n\n{final_summary}\n\n🔗 {pr.html_url}", parse_mode='Markdown', disable_web_page_preview=True)
+                        except Exception as e:
+                            print(f"Error sending message: {e}")
+
                     self.state_per_chat[chat_id]['seen_prs'].add(pr.id)
         self.state_per_chat[chat_id]['last_pr_timestamp'] = time.time()
 
