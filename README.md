@@ -2,7 +2,7 @@
 
 [![](https://licensebuttons.net/p/zero/1.0/88x31.png)](https://creativecommons.org/publicdomain/zero/1.0/)
 
-RepoRadar can monitor multiple GitHub orgs to find any newly open PRs and post them in a telegram feed. This allows you to create automated informational feeds for any ecosystem where changes are proposed through code.
+RepoRadar can monitor multiple GitHub orgs to find any newly open PRs, summarizes everything from title to diff using LLMs and post them in a telegram chat. This allows you to create automated informational feeds for any ecosystem where changes are proposed through code.
 
 Join our group monitoring DeFi orgs: [t.me/reporadar](https://t.me/reporadar)
 
