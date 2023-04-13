@@ -73,7 +73,7 @@ class PRMonitor:
                 print(f"Error fetching organization {org_name}: {e}")
                 continue
             
-            print("Checking " + org_name + " for PRs in " + len(org.get_repos()) + " repos...")
+            print("Scanning " + org_name + "...")
 
             for repo in org.get_repos():
                 
