@@ -56,6 +56,7 @@ class PRMonitor:
                 ]
             )
             new_summaries.append(response.choices[0].message['content'])
+            time.sleep(1)
 
         return self.recursive_summarize(new_summaries)
 
@@ -65,10 +66,8 @@ class PRMonitor:
             self.state_per_chat[chat_id] = {'seen_prs': set(), 'last_pr_timestamp': time.time() - run_every}
         last_pr_timestamp = self.state_per_chat[chat_id]['last_pr_timestamp']
 
-        print("Checking PRs...")
-
         for org_name in gh_orgs:
-            print(org_name)
+            print("Checking " + org_name + " for PRs in " + len(org.get_repos()) + " repos...")
             try:
                 org = github_api.get_organization(org_name)
             except GithubException as e:
@@ -76,7 +75,7 @@ class PRMonitor:
                 continue
 
             for repo in org.get_repos():
-                print(repo.name)
+                
                 try:
                     pr_list = repo.get_pulls(state='open')
                 except GithubException as e:
@@ -87,7 +86,7 @@ class PRMonitor:
                     if pr.id in self.state_per_chat[chat_id]['seen_prs'] or pr.created_at.timestamp() <= last_pr_timestamp:
                         continue
 
-                    print(f"Found new PR: {pr.html_url}")
+                    print(f"Summarizing new PR: {pr.html_url}")
 
                     pr_title = pr.title
                     pr_desc = pr.body
@@ -97,8 +96,6 @@ class PRMonitor:
                     full_txt = f"Title: {pr_title}\nDescription: {pr_desc}\nCommit messages: {cm_msgs}\nDiff: {diff_txt}"
                     max_chars = 7500
                     chunks = [full_txt[i:i + max_chars] for i in range(0, len(full_txt), max_chars)]
-
-                    print("Summarizing PR...")
 
                     try:
                         summaries = []
@@ -120,6 +117,7 @@ class PRMonitor:
 
                             )
                             summaries.append(response.choices[0].message['content'])
+                            time.sleep(1)
 
                         if len(chunks) > 1:
                             final_summary = self.recursive_summarize(summaries)
