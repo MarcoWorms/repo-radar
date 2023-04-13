@@ -95,7 +95,7 @@ class PRMonitor:
                     diff_txt = diff_resp.text
                     cm_msgs = "\n".join([cm.commit.message for cm in pr.get_commits()])
                     full_txt = f"Title: {pr_title}\nDescription: {pr_desc}\nCommit messages: {cm_msgs}\nDiff: {diff_txt}"
-                    max_chars = 7500
+                    max_chars = 5000
                     chunks = [full_txt[i:i + max_chars] for i in range(0, len(full_txt), max_chars)]
 
                     try:
