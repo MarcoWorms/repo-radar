@@ -67,12 +67,13 @@ class PRMonitor:
         last_pr_timestamp = self.state_per_chat[chat_id]['last_pr_timestamp']
 
         for org_name in gh_orgs:
-            print("Checking " + org_name + " for PRs in " + len(org.get_repos()) + " repos...")
             try:
                 org = github_api.get_organization(org_name)
             except GithubException as e:
                 print(f"Error fetching organization {org_name}: {e}")
                 continue
+            
+            print("Checking " + org_name + " for PRs in " + len(org.get_repos()) + " repos...")
 
             for repo in org.get_repos():
                 
