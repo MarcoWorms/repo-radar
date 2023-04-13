@@ -12,8 +12,8 @@ RepoRadar can monitor multiple GitHub orgs to find any newly open PRs, summarize
 ## Sponsor
 
 Sponsorship Addresses:
-- ETH: `0xB0DcaFaa9923ed2f43FFe8E1064c6E9878BB8165`
-- BTC: `bc1qhhgc9frh8lmexutgks9zc034ghchce5e2psdc9`
+- ETH: [`0xB0DcaFaa9923ed2f43FFe8E1064c6E9878BB8165`](https://www.blockchain.com/explorer/addresses/eth/0xB0DcaFaa9923ed2f43FFe8E1064c6E9878BB8165)
+- BTC: [`bc1qhhgc9frh8lmexutgks9zc034ghchce5e2psdc9`](https://www.blockchain.com/explorer/addresses/btc/bc1qhhgc9frh8lmexutgks9zc034ghchce5e2psdc9)
 
 Today RepoRadar operational costs are starting to get expensive for me to pay just by myself (about 10$ every day), so I'm opening this channel so people can contribute to funds that will be used to pay LLM bills, like OpenAI in this current version. With enough funds, I could:
 
