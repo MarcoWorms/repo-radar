@@ -1,5 +1,6 @@
 import os
 import time
+import logging
 from telegram import Update
 from telegram.ext import Updater, CommandHandler, CallbackContext
 from github import Github, GithubException
@@ -16,6 +17,18 @@ oai_key = os.getenv("OPENAI_API_KEY")
 # Initialize APIs
 github_api = Github(gh_token)
 openai.api_key = oai_key
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('monitor_bot.log', mode='w'),
+        logging.StreamHandler()
+    ]
+)
+
+logger = logging.getLogger(__name__)
 
 # List of GitHub organizations to monitor
 gh_orgs = [
@@ -70,24 +83,24 @@ class PRMonitor:
             try:
                 org = github_api.get_organization(org_name)
             except GithubException as e:
-                print(f"Error fetching organization {org_name}: {e}")
+                logger.error(f"Error fetching organization {org_name}: {e}")
                 continue
             
-            print("Scanning " + org_name + "...")
+            logger.info("Scanning " + org_name + "...")
 
             for repo in org.get_repos():
                 
                 try:
                     pr_list = repo.get_pulls(state='open')
                 except GithubException as e:
-                    print(f"Error fetching PRs for repo {repo.name}: {e}")
+                    logger.error(f"Error fetching PRs for repo {repo.name}: {e}")
                     continue
 
                 for pr in pr_list:
                     if pr.id in self.state_per_chat[chat_id]['seen_prs'] or pr.created_at.timestamp() <= last_pr_timestamp:
                         continue
 
-                    print(f"Summarizing new PR: {pr.html_url}")
+                    logger.info(f"Summarizing new PR: {pr.html_url}")
 
                     pr_title = pr.title
                     pr_desc = pr.body
@@ -125,21 +138,21 @@ class PRMonitor:
                         else:
                             final_summary = summaries[0]
 
-                        print(f"Sending summary: {final_summary}")
+                        logger.info(f"Sending summary: {final_summary}")
 
                     except Exception as e:
-                        print(f"Error generating summary with OpenAI API: {e}")
+                        logger.error(f"Error generating summary with OpenAI API: {e}")
                         final_summary = f"{pr_title}\n\n_Summary unavailable, could not reach OpenAI._"
                         try:
                             context.bot.send_message(chat_id, f"*{org_name} / {repo.name}*\n\n{final_summary}\n\n🔗 {pr.html_url}", parse_mode='Markdown', disable_web_page_preview=True)
                         except Exception as e:
-                            print(f"Error sending message: {e}")
+                            logger.error(f"Error sending message: {e}")
 
                     else:
                         try:
                             context.bot.send_message(chat_id, f"*{org_name} / {repo.name}*\n\n{final_summary}\n\n🔗 {pr.html_url}", parse_mode='Markdown', disable_web_page_preview=True)
                         except Exception as e:
-                            print(f"Error sending message: {e}")
+                            logger.error(f"Error sending message: {e}")
 
                     self.state_per_chat[chat_id]['seen_prs'].add(pr.id)
         self.state_per_chat[chat_id]['last_pr_timestamp'] = time.time()
