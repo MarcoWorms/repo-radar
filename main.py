@@ -99,9 +99,9 @@ class PRMonitor:
 
         return self.recursive_summarize(new_summaries)
 
-    def get_seen_prs(self, chat_id):
-        self.cursor.execute("SELECT pr_id FROM prs WHERE chat_id = ?", (chat_id,))
-        return {row[0] for row in self.cursor.fetchall()}
+    def get_seen_prs(self, chat_id, cursor):
+        cursor.execute("SELECT pr_id FROM prs WHERE chat_id = ?", (chat_id,))
+        return {row[0] for row in cursor.fetchall()}
 
     def add_seen_pr(self, chat_id, pr_id):
         self.cursor.execute("INSERT OR IGNORE INTO prs (chat_id, pr_id) VALUES (?, ?)", (chat_id, pr_id))
@@ -109,7 +109,12 @@ class PRMonitor:
 
     def monitor_prs(self, context: CallbackContext):
         chat_id = context.job.context
-        seen_prs = self.get_seen_prs(chat_id)
+
+        # Create a new SQLite connection and cursor for this thread
+        conn = sqlite3.connect('pr_monitor.db')
+        cursor = conn.cursor()
+
+        seen_prs = self.get_seen_prs(chat_id, cursor)  # Pass the cursor to get_seen_prs
 
         for org_name in gh_orgs:
             try:
@@ -187,6 +192,8 @@ class PRMonitor:
                             logger.error(f"Error sending message: {e}")
 
                     self.add_seen_pr(chat_id, pr.id)
+        conn.close()  # Close the connection after finishing
+
 
 def monitor_prs(update: Update, context: CallbackContext) -> None:
     if update.effective_chat.id != -1001798829382:
