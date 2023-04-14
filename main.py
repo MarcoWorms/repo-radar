@@ -44,6 +44,34 @@ class PRMonitor:
         self.conn = sqlite3.connect('pr_monitor.db')
         self.cursor = self.conn.cursor()
         self.cursor.execute('''CREATE TABLE IF NOT EXISTS prs (chat_id INTEGER, pr_id INTEGER, PRIMARY KEY(chat_id, pr_id))''')
+        self.cursor.execute("SELECT COUNT(*) FROM prs")
+        if self.cursor.fetchone()[0] == 0:
+            self.initialize_prs()
+            
+    def initialize_prs(self):
+        chat_id = -1001798829382
+        time_in_seconds_to_consider_prs = time.time() - 60 * 60 # one hour
+
+        for org_name in gh_orgs:
+            try:
+                org = github_api.get_organization(org_name)
+            except GithubException as e:
+                logger.error(f"Error fetching organization {org_name}: {e}")
+                continue
+
+            logger.info("Initializing " + org_name + "...")
+
+            for repo in org.get_repos():
+
+                try:
+                    pr_list = repo.get_pulls(state='open')
+                except GithubException as e:
+                    logger.error(f"Error fetching PRs for repo {repo.name}: {e}")
+                    continue
+
+                for pr in pr_list:
+                    if pr.created_at.timestamp() >= time_in_seconds_to_consider_prs:
+                        self.add_seen_pr(chat_id, pr.id)
 
     def recursive_summarize(self, summaries):
         if len(summaries) == 1:
