@@ -103,8 +103,8 @@ class PRMonitor:
         cursor.execute("SELECT pr_id FROM prs WHERE chat_id = ?", (chat_id,))
         return {row[0] for row in cursor.fetchall()}
 
-    def add_seen_pr(self, chat_id, pr_id):
-        self.cursor.execute("INSERT OR IGNORE INTO prs (chat_id, pr_id) VALUES (?, ?)", (chat_id, pr_id))
+    def add_seen_pr(self, chat_id, pr_id, cursor):
+        cursor.execute("INSERT OR IGNORE INTO prs (chat_id, pr_id) VALUES (?, ?)", (chat_id, pr_id))
         self.conn.commit()
 
     def monitor_prs(self, context: CallbackContext):
@@ -191,7 +191,8 @@ class PRMonitor:
                         except Exception as e:
                             logger.error(f"Error sending message: {e}")
 
-                    self.add_seen_pr(chat_id, pr.id)
+                    self.add_seen_pr(chat_id, pr.id, cursor)  # Pass the cursor to add_seen_pr
+
         conn.close()  # Close the connection after finishing
 
 
