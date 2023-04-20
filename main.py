@@ -1,7 +1,6 @@
 import os
 import time
 import logging
-import sqlite3
 from telegram import Update
 from telegram.ext import Updater, CommandHandler, CallbackContext
 from github import Github, GithubException
@@ -9,14 +8,17 @@ import openai
 from dotenv import load_dotenv
 import requests
 
+# Load environment variables
 load_dotenv()
 t_token = os.getenv("TELEGRAM_BOT_TOKEN")
 gh_token = os.getenv("GITHUB_ACCESS_TOKEN")
 oai_key = os.getenv("OPENAI_API_KEY")
 
+# Initialize APIs
 github_api = Github(gh_token)
 openai.api_key = oai_key
 
+# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -28,12 +30,15 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
+# List of GitHub organizations to monitor
 gh_orgs = [
     'ethereum', 'bitcoin', 'yearn', 'makerdao', 'curvefi', 'uniswap',
-    'sushiswap', 'compound-finance', 'aave', 'balancer-labs',
-    'alchemix-finance', 'redacted-cartel', 'manifoldfinance'
+    'sushiswap', 'compound-finance', 'aave', 'balancer-labs', 'FraxFinance',
+    'alchemix-finance', 'redacted-cartel', 'manifoldfinance', 'lidofinance',
+    'justlend'
 ]
 
+# Set the interval to run every 65 minutes (to avoid GitHub's rate limit)
 run_every = 60 * 65
 
 def start(update: Update, context: CallbackContext) -> None:
@@ -41,37 +46,7 @@ def start(update: Update, context: CallbackContext) -> None:
 
 class PRMonitor:
     def __init__(self):
-        self.conn = sqlite3.connect('pr_monitor.db')
-        self.cursor = self.conn.cursor()
-        self.cursor.execute('''CREATE TABLE IF NOT EXISTS prs (chat_id INTEGER, pr_id INTEGER, PRIMARY KEY(chat_id, pr_id))''')
-        self.cursor.execute("SELECT COUNT(*) FROM prs")
-        if self.cursor.fetchone()[0] == 0:
-            self.initialize_prs()
-            
-    def initialize_prs(self):
-        chat_id = -1001798829382
-        time_in_seconds_to_consider_prs = time.time() - 60 * 60 # one hour
-
-        for org_name in gh_orgs:
-            try:
-                org = github_api.get_organization(org_name)
-            except GithubException as e:
-                logger.error(f"Error fetching organization {org_name}: {e}")
-                continue
-
-            logger.info("Initializing " + org_name + "...")
-
-            for repo in org.get_repos():
-
-                try:
-                    pr_list = repo.get_pulls(state='open')
-                except GithubException as e:
-                    logger.error(f"Error fetching PRs for repo {repo.name}: {e}")
-                    continue
-
-                for pr in pr_list:
-                    if pr.created_at.timestamp() >= time_in_seconds_to_consider_prs:
-                        self.add_seen_pr(chat_id, pr.id)
+        self.state_per_chat = {}
 
     def recursive_summarize(self, summaries):
         if len(summaries) == 1:
@@ -99,22 +74,11 @@ class PRMonitor:
 
         return self.recursive_summarize(new_summaries)
 
-    def get_seen_prs(self, chat_id, cursor):
-        cursor.execute("SELECT pr_id FROM prs WHERE chat_id = ?", (chat_id,))
-        return {row[0] for row in cursor.fetchall()}
-
-    def add_seen_pr(self, chat_id, pr_id, cursor):
-        cursor.execute("INSERT OR IGNORE INTO prs (chat_id, pr_id) VALUES (?, ?)", (chat_id, pr_id))
-        self.conn.commit()
-
     def monitor_prs(self, context: CallbackContext):
         chat_id = context.job.context
-
-        # Create a new SQLite connection and cursor for this thread
-        conn = sqlite3.connect('pr_monitor.db')
-        cursor = conn.cursor()
-
-        seen_prs = self.get_seen_prs(chat_id, cursor)  # Pass the cursor to get_seen_prs
+        if chat_id not in self.state_per_chat:
+            self.state_per_chat[chat_id] = {'seen_prs': set(), 'last_pr_timestamp': time.time() - run_every}
+        last_pr_timestamp = self.state_per_chat[chat_id]['last_pr_timestamp']
 
         for org_name in gh_orgs:
             try:
@@ -122,11 +86,11 @@ class PRMonitor:
             except GithubException as e:
                 logger.error(f"Error fetching organization {org_name}: {e}")
                 continue
-
+            
             logger.info("Scanning " + org_name + "...")
 
             for repo in org.get_repos():
-
+                
                 try:
                     pr_list = repo.get_pulls(state='open')
                 except GithubException as e:
@@ -134,7 +98,7 @@ class PRMonitor:
                     continue
 
                 for pr in pr_list:
-                    if pr.id in seen_prs:
+                    if pr.id in self.state_per_chat[chat_id]['seen_prs'] or pr.created_at.timestamp() <= last_pr_timestamp:
                         continue
 
                     logger.info(f"Summarizing new PR: {pr.html_url}")
@@ -191,10 +155,8 @@ class PRMonitor:
                         except Exception as e:
                             logger.error(f"Error sending message: {e}")
 
-                    self.add_seen_pr(chat_id, pr.id, cursor)  # Pass the cursor to add_seen_pr
-
-        conn.close()  # Close the connection after finishing
-
+                    self.state_per_chat[chat_id]['seen_prs'].add(pr.id)
+        self.state_per_chat[chat_id]['last_pr_timestamp'] = time.time()
 
 def monitor_prs(update: Update, context: CallbackContext) -> None:
     if update.effective_chat.id != -1001798829382:
